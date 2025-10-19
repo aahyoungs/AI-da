@@ -1,0 +1,398 @@
+{
+    "session-1": {
+        "events": [
+            {
+                "timestamp": "2025-10-19T09:12:10+09:00",
+                "src_ip": "14.63.65.128",
+                "dst_ip": "10.0.1.5",
+                "protocol": "TCP",
+                "tid": "T1595",
+                "technique": "Active Scanning"
+            },
+            {
+                "timestamp": "2025-10-19T09:15:40+09:00",
+                "src_ip": "14.63.65.128",
+                "dst_ip": "10.0.1.5",
+                "protocol": "TCP",
+                "tid": "T1566",
+                "technique": "Phishing"
+            },
+            {
+                "timestamp": "2025-10-19T09:18:25+09:00",
+                "src_ip": "10.0.1.5",
+                "dst_ip": "198.51.100.12",
+                "protocol": "HTTPS",
+                "tid": "T1071",
+                "technique": "Application Layer Protocol (C2)"
+            },
+            {
+                "timestamp": "2025-10-19T09:22:00+09:00",
+                "src_ip": "10.0.1.5",
+                "dst_ip": "198.51.100.12",
+                "protocol": "HTTPS",
+                "tid": "T1041",
+                "technique": "Exfiltration Over C2 Channel"
+            }
+        ]
+    },
+    "session-2": {
+        "events": [
+            {
+                "timestamp": "2025-10-18T21:50:00+09:00",
+                "src_ip": "121.130.22.45",
+                "dst_ip": "10.2.2.10",
+                "protocol": "TCP",
+                "tid": "T1590",
+                "technique": "Gather Victim Network Information"
+            },
+            {
+                "timestamp": "2025-10-18T21:52:00+09:00",
+                "src_ip": "121.130.22.45",
+                "dst_ip": "10.2.2.10",
+                "protocol": "TCP",
+                "tid": "T1190",
+                "technique": "Exploit Public-Facing Application"
+            },
+            {
+                "timestamp": "2025-10-18T21:53:00+09:00",
+                "src_ip": "10.2.2.10",
+                "dst_ip": "203.0.113.25",
+                "protocol": "TCP",
+                "tid": "T1105",
+                "technique": "Ingress Tool Transfer"
+            },
+            {
+                "timestamp": "2025-10-18T22:10:00+09:00",
+                "src_ip": "10.2.2.10",
+                "dst_ip": "203.0.113.25",
+                "protocol": "TCP",
+                "tid": "T1059",
+                "technique": "Command and Scripting Interpreter"
+            },
+            {
+                "timestamp": "2025-10-18T22:20:00+09:00",
+                "src_ip": "10.2.2.10",
+                "dst_ip": "203.0.113.25",
+                "protocol": "TCP",
+                "tid": "T1041",
+                "technique": "Exfiltration Over C2 Channel"
+            }
+        ]
+    },
+    "session-3": {
+        "events": [
+            {
+                "timestamp": "2025-10-12T14:30:00+09:00",
+                "src_ip": "58.229.45.12",
+                "dst_ip": "10.3.3.30",
+                "protocol": "UDP",
+                "tid": "T1046",
+                "technique": "Network Service Discovery"
+            },
+            {
+                "timestamp": "2025-10-12T14:32:00+09:00",
+                "src_ip": "58.229.45.12",
+                "dst_ip": "10.3.3.30",
+                "protocol": "TCP",
+                "tid": "T1078",
+                "technique": "Valid Accounts"
+            },
+            {
+                "timestamp": "2025-10-12T14:34:00+09:00",
+                "src_ip": "10.3.3.30",
+                "dst_ip": "10.3.3.40",
+                "protocol": "TCP",
+                "tid": "T1021",
+                "technique": "Remote Services (SMB/SSH)"
+            },
+            {
+                "timestamp": "2025-10-12T14:40:00+09:00",
+                "src_ip": "10.3.3.40",
+                "dst_ip": "203.250.50.100",
+                "protocol": "TCP",
+                "tid": "T1048",
+                "technique": "Exfiltration Over Alternative Protocol"
+            }
+        ]
+    },
+    "session-4": {
+        "events": [
+            {
+                "timestamp": "2025-10-19T02:00:00+09:00",
+                "src_ip": "110.70.15.98",
+                "dst_ip": "10.4.4.5",
+                "protocol": "TCP",
+                "tid": "T1566",
+                "technique": "Phishing"
+            },
+            {
+                "timestamp": "2025-10-19T02:03:00+09:00",
+                "src_ip": "10.4.4.5",
+                "dst_ip": "198.51.100.70",
+                "protocol": "HTTP",
+                "tid": "T1105",
+                "technique": "Ingress Tool Transfer"
+            },
+            {
+                "timestamp": "2025-10-19T02:10:00+09:00",
+                "src_ip": "10.4.4.5",
+                "dst_ip": "198.51.100.70",
+                "protocol": "TCP",
+                "tid": "T1547",
+                "technique": "Persistence via Boot or Logon Autostart"
+            },
+            {
+                "timestamp": "2025-10-19T02:20:00+09:00",
+                "src_ip": "10.4.4.5",
+                "dst_ip": "198.51.100.70",
+                "protocol": "HTTPS",
+                "tid": "T1071",
+                "technique": "C2 over HTTPS"
+            }
+        ]
+    },
+    "session-5": {
+        "events": [
+            {
+                "timestamp": "2025-10-12T10:15:00+09:00",
+                "src_ip": "203.250.50.200",
+                "dst_ip": "10.5.5.10",
+                "protocol": "TCP",
+                "tid": "T1190",
+                "technique": "Exploit Public-Facing Application"
+            },
+            {
+                "timestamp": "2025-10-12T10:17:00+09:00",
+                "src_ip": "10.5.5.10",
+                "dst_ip": "10.5.5.20",
+                "protocol": "TCP",
+                "tid": "T1078",
+                "technique": "Valid Accounts"
+            },
+            {
+                "timestamp": "2025-10-12T10:20:00+09:00",
+                "src_ip": "10.5.5.20",
+                "dst_ip": "203.0.113.10",
+                "protocol": "HTTPS",
+                "tid": "T1041",
+                "technique": "Exfiltration Over C2 Channel"
+            }
+        ]
+    },
+    "session-6": {
+        "events": [
+            {
+                "timestamp": "2025-09-19T08:00:00+09:00",
+                "src_ip": "27.102.89.77",
+                "dst_ip": "10.6.6.10",
+                "protocol": "TCP",
+                "tid": "T1595",
+                "technique": "Active Scanning"
+            },
+            {
+                "timestamp": "2025-09-19T08:03:00+09:00",
+                "src_ip": "27.102.89.77",
+                "dst_ip": "10.6.6.10",
+                "protocol": "TCP",
+                "tid": "T1190",
+                "technique": "Exploit Public-Facing Application"
+            },
+            {
+                "timestamp": "2025-09-19T08:05:00+09:00",
+                "src_ip": "10.6.6.10",
+                "dst_ip": "198.51.100.99",
+                "protocol": "HTTPS",
+                "tid": "T1105",
+                "technique": "Ingress Tool Transfer"
+            },
+            {
+                "timestamp": "2025-09-19T08:10:00+09:00",
+                "src_ip": "10.6.6.10",
+                "dst_ip": "198.51.100.99",
+                "protocol": "TCP",
+                "tid": "T1041",
+                "technique": "Exfiltration Over C2 Channel"
+            }
+        ]
+    },
+    "session-7": {
+        "events": [
+            {
+                "timestamp": "2025-10-19T03:00:00+09:00",
+                "src_ip": "58.229.45.12",
+                "dst_ip": "10.7.7.15",
+                "protocol": "UDP",
+                "tid": "T1046",
+                "technique": "Network Service Discovery"
+            },
+            {
+                "timestamp": "2025-10-19T03:03:00+09:00",
+                "src_ip": "58.229.45.12",
+                "dst_ip": "10.7.7.15",
+                "protocol": "TCP",
+                "tid": "T1573",
+                "technique": "Encrypted Channel"
+            },
+            {
+                "timestamp": "2025-10-19T03:06:00+09:00",
+                "src_ip": "10.7.7.15",
+                "dst_ip": "203.0.113.40",
+                "protocol": "HTTPS",
+                "tid": "T1071",
+                "technique": "C2 over HTTPS"
+            }
+        ]
+    },
+    "session-8": {
+        "events": [
+            {
+                "timestamp": "2025-10-12T22:10:00+09:00",
+                "src_ip": "175.125.12.9",
+                "dst_ip": "10.8.8.8",
+                "protocol": "TCP",
+                "tid": "T1190",
+                "technique": "SQL Injection"
+            },
+            {
+                "timestamp": "2025-10-12T22:12:00+09:00",
+                "src_ip": "10.8.8.8",
+                "dst_ip": "203.250.50.250",
+                "protocol": "TCP",
+                "tid": "T1041",
+                "technique": "Exfiltration Over C2 Channel"
+            }
+        ]
+    },
+    "session-9": {
+        "events": [
+            {
+                "timestamp": "2025-10-18T13:50:00+09:00",
+                "src_ip": "1.255.12.205",
+                "dst_ip": "10.9.9.9",
+                "protocol": "TCP",
+                "tid": "T1486",
+                "technique": "Data Encrypted for Impact"
+            },
+            {
+                "timestamp": "2025-10-18T13:52:00+09:00",
+                "src_ip": "10.9.9.9",
+                "dst_ip": "10.9.9.10",
+                "protocol": "TCP",
+                "tid": "T1490",
+                "technique": "Data Destruction"
+            }
+        ]
+    },
+    "session-10": {
+        "events": [
+            {
+                "timestamp": "2025-09-19T22:00:00+09:00",
+                "src_ip": "121.78.55.3",
+                "dst_ip": "10.10.10.5",
+                "protocol": "TCP",
+                "tid": "T1078",
+                "technique": "Valid Accounts"
+            },
+            {
+                "timestamp": "2025-09-19T22:05:00+09:00",
+                "src_ip": "10.10.10.5",
+                "dst_ip": "203.0.113.200",
+                "protocol": "FTP",
+                "tid": "T1020",
+                "technique": "Automated Exfiltration"
+            },
+            {
+                "timestamp": "2025-09-19T22:10:00+09:00",
+                "src_ip": "10.10.10.5",
+                "dst_ip": "203.0.113.200",
+                "protocol": "HTTPS",
+                "tid": "T1041",
+                "technique": "Exfiltration Over C2 Channel"
+            }
+        ]
+    },
+    "session-11": {
+    "events": [
+      {
+        "timestamp": "2025-10-19T09:00:10+09:00",
+        "src_ip": "203.0.113.1",
+        "dst_ip": "10.0.1.5",
+        "protocol": "TCP",
+        "tid": "T1498",
+        "technique": "Network Denial of Service"
+      },
+      {
+        "timestamp": "2025-10-19T09:00:15+09:00",
+        "src_ip": "203.0.113.2",
+        "dst_ip": "10.0.1.5",
+        "protocol": "TCP",
+        "tid": "T1498",
+        "technique": "Network Denial of Service"
+      },
+      {
+        "timestamp": "2025-10-19T09:00:20+09:00",
+        "src_ip": "203.0.113.3",
+        "dst_ip": "10.0.1.5",
+        "protocol": "TCP",
+        "tid": "T1498",
+        "technique": "Network Denial of Service"
+      },
+      {
+        "timestamp": "2025-10-19T09:00:25+09:00",
+        "src_ip": "203.0.113.4",
+        "dst_ip": "10.0.1.5",
+        "protocol": "TCP",
+        "tid": "T1498",
+        "technique": "Network Denial of Service"
+      },
+      {
+        "timestamp": "2025-10-19T09:00:30+09:00",
+        "src_ip": "203.0.113.5",
+        "dst_ip": "10.0.1.5",
+        "protocol": "TCP",
+        "tid": "T1498",
+        "technique": "Network Denial of Service"
+      },
+      {
+        "timestamp": "2025-10-19T09:00:35+09:00",
+        "src_ip": "203.0.113.6",
+        "dst_ip": "10.0.1.5",
+        "protocol": "TCP",
+        "tid": "T1498",
+        "technique": "Network Denial of Service"
+      },
+      {
+        "timestamp": "2025-10-19T09:00:40+09:00",
+        "src_ip": "203.0.113.7",
+        "dst_ip": "10.0.1.5",
+        "protocol": "TCP",
+        "tid": "T1498",
+        "technique": "Network Denial of Service"
+      },
+      {
+        "timestamp": "2025-10-19T09:00:45+09:00",
+        "src_ip": "203.0.113.8",
+        "dst_ip": "10.0.1.5",
+        "protocol": "TCP",
+        "tid": "T1498",
+        "technique": "Network Denial of Service"
+      },
+      {
+        "timestamp": "2025-10-19T09:00:50+09:00",
+        "src_ip": "203.0.113.9",
+        "dst_ip": "10.0.1.5",
+        "protocol": "TCP",
+        "tid": "T1498",
+        "technique": "Network Denial of Service"
+      },
+      {
+        "timestamp": "2025-10-19T09:00:55+09:00",
+        "src_ip": "203.0.113.10",
+        "dst_ip": "10.0.1.5",
+        "protocol": "TCP",
+        "tid": "T1498",
+        "technique": "Network Denial of Service"
+      }
+    ]
+  }
+}

@@ -1,0 +1,190 @@
+.legend-box {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+}
+
+.legend-line {
+  display: inline-block;
+  width: 20px;
+  height: 4px;
+  border-radius: 2px;
+}
+
+:root {
+  --cell-size: 60px;
+}
+
+#heatmapTable {
+  table-layout: fixed;
+  width: 100%;
+}
+
+#heatmapTable th,
+#heatmapTable td {
+  width: calc(100% / 14);
+  padding: 3px;
+  vertical-align: middle;
+  position: relative;
+}
+
+#heatmapBody tr {
+  height: auto;
+}
+
+.heat-cell {
+  width: 100%;
+  aspect-ratio: 1 / 1.3;
+  border-radius: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+  overflow: hidden;
+}
+
+.cell-inner {
+  text-align: center;
+  color: #111827;
+  line-height: 1.1;
+}
+
+#unknownLabel {
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin-left: 0.5rem;
+}
+
+#heatmapModal .bg-white {
+  animation: popIn 0.15s ease-in-out;
+}
+
+@keyframes popIn {
+  from {
+    transform: scale(0.9);
+    opacity: 0;
+  }
+
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+#miniHeatmap .grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#miniHeatmap .w-4.h-4 {
+  transition: transform 0.1s ease;
+}
+
+#miniHeatmap .w-4.h-4:hover {
+  transform: scale(1.3);
+}
+
+#miniHeatmap .font-semibold {
+  min-width: 16px;
+}
+
+.modal-pre {
+  background: #F9FAFB;
+  border: 1px solid #E5E7EB;
+  border-radius: 12px;
+  padding: 12px;
+  font-size: 12px;
+  overflow: auto;
+  max-height: 60vh;
+}
+
+.flow-controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.flow-btn {
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: #ffffff;
+  border: 1px solid #E5E7EB;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.flow-btn:hover {
+  background: #F3F4F6;
+}
+
+.flow-btn.active {
+  background: #EEF2FF;
+  border-color: #C7D2FE;
+  color: #3730A3;
+  box-shadow: 0 1px 2px rgba(99, 102, 241, 0.06);
+}
+
+.flow-node-badge {
+  font-size: 11px;
+  fill: #B91C1C;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+#flowList .flow-item {
+  padding: 8px;
+  border-radius: 8px;
+  margin-bottom: 6px;
+}
+
+#flowList .flow-item:hover {
+  background: #F8FAFC;
+  cursor: pointer;
+}
+
+@media (min-width: 1025px) {
+  :root {
+    --cell-size: calc((100vw - 300px) / 14);
+  }
+
+  td.heat-cell {
+    height: var(--cell-size);
+  }
+}
+
+@media (max-width: 1024px) and (min-width: 640px) {
+  :root {
+    --cell-size: calc((100vw - 180px) / 10);
+  }
+
+  td.heat-cell {
+    height: var(--cell-size);
+  }
+}
+
+@media (max-width: 639px) {
+  :root {
+    --cell-size: 70px;
+  }
+
+  #heatmapContainer {
+    overflow-x: scroll;
+  }
+
+  #heatmapContainer table {
+    min-width: 900px;
+  }
+
+  td.heat-cell {
+    height: 40px;
+  }
+
+  td.heat-cell>.cell-inner {
+    font-size: 8px;
+  }
+}
