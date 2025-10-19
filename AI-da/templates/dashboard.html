@@ -81,29 +81,31 @@
         <h2 class="text-base font-semibold">이벤트</h2>
       </div>
       <div class="overflow-auto">
-        <table class="min-w-full text-xs" id="eventsTable">
-          <thead>
-            <tr class="text-left text-gray-500">
-              <th class="p-2">timestamp</th>
-              <th class="p-2">src_ip</th>
-              <th class="p-2">src_port</th>
-              <th class="p-2">dst_ip</th>
-              <th class="p-2">dst_port</th>
-              <th class="p-2">protocol</th>
-              <th class="p-2">fwd_bytes</th>
-              <th class="p-2">bwd_bytes</th>
-              <th class="p-2">tactic</th>
+        <table id="eventsTable" class="min-w-full text-sm border-t border-gray-200">
+          <thead class="bg-gray-100 text-gray-700">
+            <tr>
+              <th class="p-2">Timestamp</th>
+              <th class="p-2">Src IP</th>
+              <th class="p-2">Src Port</th>
+              <th class="p-2">Dst IP</th>
+              <th class="p-2">Dst Port</th>
+              <th class="p-2">Protocol</th>
+              <th class="p-2">Fwd Bytes</th>
+              <th class="p-2">Bwd Bytes</th>
+              <th class="p-2">Tactic</th>
               <th class="p-2">TID</th>
-              <th class="p-2">technique</th>
+              <th class="p-2">Technique</th>
             </tr>
           </thead>
           <tbody></tbody>
         </table>
-        <div class="flex items-center justify-end gap-2 mt-3 text-xs">
-          <button id="prevPage" class="px-2 py-1 border rounded">이전</button>
+        
+        <div class="flex justify-between items-center mt-3 text-sm">
+          <button id="prevPage" class="px-2 py-1 border rounded hover:bg-gray-100">이전</button>
           <span id="pageInfo" class="text-gray-500">1 / 1</span>
-          <button id="nextPage" class="px-2 py-1 border rounded">다음</button>
+          <button id="nextPage" class="px-2 py-1 border rounded hover:bg-gray-100">다음</button>
         </div>
+        
       </div>
     </div>
   </div>

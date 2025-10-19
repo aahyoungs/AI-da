@@ -6,21 +6,24 @@ const fmtDate = d => d.toISOString().slice(0,10);
 function currentRange() {
   const s = qs("#startDate")?.value || "";
   const e = qs("#endDate")?.value || "";
-  const quick = qs("#quickRange")?.value || "realtime";
-  const mode = (quick === "realtime") ? "live" : "range";
+  const quick = qs("#quickRange")?.value || "all";
+  const mode = (quick === "all") ? "all" : "range";
   return { start: s, end: e, mode };
 }
+
 function buildQuery() {
   const { start, end, mode } = currentRange();
-  if (mode === "live") return "?mode=live";
+  if (mode === "all") return "?mode=all";
   if (start && end) return `?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&mode=range`;
   return "?mode=range";
 }
+
 function buildRangeParams() {
-  const { start, end } = currentRange();
+  const { start, end, mode } = currentRange();
   const p = new URLSearchParams();
+  if (mode === "all") return "";
   if (start) p.set("start", start);
-  if (end) p.set("end", end);
+  if (end)   p.set("end", end);
   return p.toString();
 }
 
@@ -37,17 +40,20 @@ function buildRangeParams() {
     const today = new Date();
     const end = fmtDate(today);
     let start = end;
-    const DAY = 24*60*60*1000;
-    if (quick.value === "realtime") {
-      s.value = ""; e.value = ""; s.disabled = true; e.disabled = true;
+    const DAY = 24 * 60 * 60 * 1000;
+  
+    if (quick.value === "all") {
+      s.value = ""; e.value = "";
+      s.disabled = true; e.disabled = true;
     } else {
       s.disabled = false; e.disabled = false;
       if (quick.value === "24h") start = fmtDate(new Date(today.getTime() - DAY));
-      else if (quick.value === "7d") start = fmtDate(new Date(today.getTime() - 7*DAY));
-      else if (quick.value === "30d") start = fmtDate(new Date(today.getTime() - 30*DAY));
+      else if (quick.value === "7d") start = fmtDate(new Date(today.getTime() - 7 * DAY));
+      else if (quick.value === "30d") start = fmtDate(new Date(today.getTime() - 30 * DAY));
       if (quick.value !== "custom") { s.value = start; e.value = end; }
     }
   });
+  
 
   // tooltip hover
   let tipVisible = false;
@@ -507,7 +513,7 @@ async function updateTimeline(sid, nodeId=null){
 }
 
 async function refreshAll(){
-  await Promise.all([ refreshHeatmap(), updateTopbarMetrics() ]);
+  await Promise.all([refreshHeatmap(), updateTopbarMetrics()]);
   await refreshFlow();
 }
 

@@ -65,7 +65,9 @@ def normalize(events):
         out.append(e)
     return sorted(out, key=lambda x: x["_ts"] or datetime.min.replace(tzinfo=TZ_SEOUL))
 
-def filter_period(events, start, end):
+def filter_period(events, start, end, mode=None):
+    if mode == "all":
+        return events
     s, e = parse_range(start, end)
     if not s and not e:
         return events
@@ -110,20 +112,18 @@ def load_sessions():
 # ==============================
 @app.route("/api/heatmap")
 def api_heatmap():
-    start, end = request.args.get("start"), request.args.get("end")
+    mode = request.args.get("mode")
+    start = request.args.get("start")
+    end = request.args.get("end")
 
+    # TTP 정보 로드
     ttps = []
     if os.path.exists(TTP_FILE):
         with open(TTP_FILE, "r", encoding="utf-8") as f:
             ttps = json.load(f)
 
-    sessions = load_sessions()
-    all_events = []
-    for sdata in sessions.values():
-        evs = normalize(sdata.get("events", []))
-        all_events.extend(filter_period(evs, start, end))
-    file_events = load_events_files()
-    all_events.extend(filter_period(file_events, start, end))
+    # 모든 이벤트 로드 (events.json들 기준)
+    all_events = filter_period(load_events_files(), start, end, mode)
 
     defined_techs = {tech["technique"] for ttp in ttps for tech in ttp["techniques"]}
 
@@ -160,28 +160,111 @@ def api_heatmap():
         "unknown_count": unknown_count
     })
 
-
+# ==============================
+# Metrics
+# ==============================
 @app.route("/api/metrics")
 def api_metrics():
     start, end = request.args.get("start"), request.args.get("end")
-    sessions = load_sessions()
-    events = []
-    for sdata in sessions.values():
-        evs = normalize(sdata.get("events", []))
-        events.extend(filter_period(evs, start, end))
-    events.extend(filter_period(load_events_files(), start, end))
+
+    events = filter_period(load_events_files(), start, end)
     count = len(events)
-    score = 0
-    for e in events:
-        t = (e.get("technique") or "").lower()
-        if "phish" in t: score += 300
-        elif "exfil" in t: score += 200
-        else: score += 100
-    level = "none"
-    if score >= 1000: level = "high"
-    elif score >= 500: level = "middle"
-    elif score >= 100: level = "low"
-    return jsonify({"score": score, "level": level, "count": count})
+
+    # 위험도 매핑
+    BASE_RISK_SCORES = {
+        "T1595": 20, "Active Scanning": 20,
+        "T1046": 16, "Network Service Discovery": 16,
+        "T1598": 36, "Phishing for Information": 36,
+        "T1593": 5,  "Search Open Websites/Domains": 5,
+        "T1583": 18, "Obtain Infrastructure": 18,
+        "T1588": 16, "Acquire Capabilities": 16,
+        "T1190": 36, "Exploit Public-Facing Application": 36,
+        "T1189": 27, "Drive-by Compromise": 27,
+        "T1566.001": 48, "Spearphishing Attachment": 48,
+        "T1566.002": 48, "Spearphishing Link": 48,
+        "T1566": 48, "Phishing": 48,
+        "T1059": 48, "Command and Scripting Interpreter": 48,
+        "T1204": 30, "User Execution": 30,
+        "T1136": 36, "Create Account": 36,
+        "T1053": 36, "Scheduled Task/Job": 36,
+        "T1547": 48, "Boot or Logon Autostart Execution": 48,
+        "T1068": 60, "Exploitation for Privilege Escalation": 60,
+        "T1078": 48, "Valid Accounts": 48,
+        "T1027": 80, "Obfuscated Files or Information": 80,
+        "T1099": 24, "Timestomping": 24,
+        "T1014": 50, "Rootkit": 50,
+        "T1110": 36, "Brute Force": 36,
+        "T1555.003": 27, "Credentials from Web Browsers": 27,
+        "T1557": 36, "Man-in-the-Middle (Network)": 36,
+        "T1049": 16, "System Network Connections Discovery": 16,
+        "T1135": 27, "Network Share Discovery": 27,
+        "T1595.002": 16, "Network Service Scanning (Web)": 16,
+        "T1021": 36, "Remote Services": 36,
+        "T1558": 40, "Pass the Ticket / Kerberos Abuse": 40,
+        "T1021.002": 36, "SMB/Windows Admin Shares": 36,
+        "T1039": 36, "Data from Network Shared Drive": 36,
+        "T1056": 36, "Input Capture (Keylogging, Screen Capture)": 36,
+        "T1123": 36, "API Monitoring": 36,
+        "T1537": 36, "Cloud Storage Access": 36,
+        "T1071": 64, "Application Layer Protocol": 64,
+        "T1071.004": 36, "DNS Tunneling": 36,
+        "T1041": 60, "Exfiltration Over C2 Channel": 60,
+        "T1485": 48, "Data Destruction / Wiper": 48,
+        "T1486": 75, "Encrypt Files for Impact (Ransomware)": 75,
+        "T1489": 48, "Service Stop/Disable": 48,
+        "T1498": 36, "Network Denial of Service": 36,
+        "Hidden/Custom Protocol": 36,
+        "Domain Fronting": 36,
+        "Exfiltration (DNS/ICMP)": 48,
+        "Upload to Cloud Storage": 60
+    }
+
+    # 위험도 계산
+    def calc_period_risk(events):
+        if not events:
+            return None
+
+        for e in events:
+            tid = e.get("tid")
+            tech = e.get("technique")
+            score = None
+            if tid and tid in BASE_RISK_SCORES:
+                score = BASE_RISK_SCORES[tid]
+            elif tech and tech in BASE_RISK_SCORES:
+                score = BASE_RISK_SCORES[tech]
+            else:
+                score = 20  # 기본 Low 점수
+            e["risk_score"] = score
+
+        scores = [e["risk_score"] for e in events if e.get("risk_score") is not None]
+        if not scores:
+            return None
+
+        n = len(scores)
+        high_count = sum(1 for s in scores if s >= 71)
+        weighted = sum(scores) / n
+        freq_factor = 1 + min(0.2, n / 1000)
+        if high_count >= 1 and weighted < 70:
+            weighted = 70
+        return round(weighted * freq_factor, 1)
+
+    score = calc_period_risk(events)
+
+    if score >= 71:
+        level = "high"
+    elif score >= 31:
+        level = "middle"
+    elif score > 0:
+        level = "low"
+    else:
+        level = "none"
+
+    return jsonify({
+        "score": score,
+        "level": level,
+        "count": count
+    })
+
 
 # ==============================
 # Flow
@@ -203,7 +286,6 @@ def api_sessions():
         })
     return jsonify(res)
 
-
 @app.route("/api/session/<sid>")
 def api_session_detail(sid):
     start, end = request.args.get("start"), request.args.get("end")
@@ -213,12 +295,11 @@ def api_session_detail(sid):
         return jsonify({"error": "not found"}), 404
 
     events = filter_period(normalize(sdata.get("events", [])), start, end)
-    # DDoS
     ddos_events = [e for e in events if e.get("technique") == "Network Denial of Service" and e.get("tid") == "T1498"]
+
     if ddos_events:
         target_ip = ddos_events[0].get("dst_ip")
         count = len(ddos_events)
-        # 그래프에 출발지 1, 목적지 1만 표시
         nodes = [
             {"id": f"{ddos_events[0].get('src_ip')} 외 {count-1}건", "color": "#dc2626", "count": count},
             {"id": target_ip, "color": "#2563eb" if target_ip in ASSETS else "#dc2626", "count": count}
@@ -252,7 +333,6 @@ def api_session_detail(sid):
 
 @app.route("/api/single_events")
 def api_single_events():
-    """sessions.json에 속하지 않은 events.json 내 단일 이벤트"""
     start, end = request.args.get("start"), request.args.get("end")
     sessions = load_sessions()
     used = set()
