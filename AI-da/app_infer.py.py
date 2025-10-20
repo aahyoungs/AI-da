@@ -25,7 +25,6 @@ LABEL_ENCODER_PATH = os.path.join(MODEL_DIR, "label_encoder.joblib")
 
 # -----------------------------------------
 # 시간대
-
 KST = timezone(timedelta(hours=9))
 def to_kst_iso(dt_like):
     if dt_like is None:
@@ -45,7 +44,6 @@ def to_kst_iso(dt_like):
 
 # -----------------------------------------
 # 프로토콜 정규화
-
 def normalize_protocol(p):
     if p is None:
         return "OTHER"
@@ -126,15 +124,50 @@ def predict():
     df = pd.DataFrame(samples)
     X_df = preprocess_dataframe(df)
 
-    results_raw = []
+    # 모델 로드 검증
+    if stage1_model is None or stage2_model is None:
+        return jsonify({"error": "model not loaded"}), 500
 
+    # Stage 1 예측 
+    try:
+        y_stage1 = stage1_model.predict(X_df)
+    except Exception as e:
+        return jsonify({"error": f"Stage1 predict failed: {str(e)}"}), 500
+
+    # Stage 2 입력 구성 
+    X_stage2 = X_df.copy()
+    X_stage2["stage1_pred"] = y_stage1
+
+    # Stage 2 예측
+    try:
+        y_stage2 = stage2_model.predict(X_stage2)
+    except Exception as e:
+        return jsonify({"error": f"Stage2 predict failed: {str(e)}"}), 500
+
+    # 라벨 디코딩
+    if label_encoder is not None:
+        decoded_labels = label_encoder.inverse_transform(y_stage2)
+    else:
+        decoded_labels = [str(y) for y in y_stage2]
+
+
+    # Attack Mapping
+    results_raw = []
     for i, row in df.iterrows():
+        label = decoded_labels[i]
+        tid = attack_map.get(label, {}).get("tid", "T0000") if attack_map else "T0000"
+        tech = attack_map.get(label, {}).get("technique", label) if attack_map else label
+
         result = dict(row)
         result["timestamp"] = to_kst_iso(result.get("datetime"))
         result["protocol"] = normalize_protocol(result.get("protocol"))
-        result["tid"] = "T1566"      
-        result["technique"] = "Phishing"
+        result["stage1_pred"] = int(y_stage1[i])
+        result["stage2_pred"] = int(y_stage2[i])
+        result["attack_label"] = label
+        result["tid"] = tid
+        result["technique"] = tech
         results_raw.append(result)
+
 
     # ---- JSON 파일 저장 ----
     events_for_file = []
@@ -152,7 +185,10 @@ def predict():
             "fwd_bytes": rec.get("fwd_bytes"),
             "bwd_bytes": rec.get("bwd_bytes"),
             "tid": rec.get("tid"),
-            "technique": rec.get("technique")
+            "technique": rec.get("technique"),
+            "attack_label": rec.get("attack_label"),
+            "stage1_pred": rec.get("stage1_pred"),
+            "stage2_pred": rec.get("stage2_pred"),
         }
         events_for_file.append(out)
 
