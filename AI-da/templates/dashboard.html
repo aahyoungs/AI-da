@@ -56,9 +56,6 @@
     <div class="col-span-12 md:col-span-7 bg-white rounded-2xl shadow-card p-4">
       <div class="flex items-center justify-between mb-3">
         <h2 class="text-base font-semibold">공격 흐름</h2>
-        <div class="text-xs text-gray-500 flex items-center gap-3">
-          <button id="btnExportPng" class="ml-2 px-2 py-1 border rounded">PNG로 저장</button>
-        </div>
       </div>
       <div id="flowControls" class="flow-controls mb-3 flex flex-wrap gap-2"></div>
       <div id="flowCanvasWrap"
@@ -69,10 +66,21 @@
 
     <aside class="col-span-12 md:col-span-3 bg-white rounded-2xl shadow-card p-4">
       <h2 class="text-base font-semibold mb-3">Timeline</h2>
-      <div id="timelineWrap" class="max-h-[500px] overflow-y-auto pr-2">
-        <ol id="timeline" class="relative pl-2 text-xs space-y-3">
-          <li class="text-gray-500">플로우/노드를 선택하면 세션 타임라인이 여기에 표시됩니다.</li>
-        </ol>
+    
+      <div id="timelineStage" class="relative">
+        <div id="timelineWrap" class="max-h-[300px] overflow-y-auto pr-2">
+          <ol id="timeline" class="relative pl-2 text-xs space-y-3">
+            <li class="text-gray-500">플로우/노드를 선택하면 세션 타임라인이 여기에 표시됩니다.</li>
+          </ol>
+        </div>
+    
+        <svg id="timelineOverlay" class="pointer-events-none absolute inset-0 w-full h-full"></svg>
+    
+        <div id="timelinePredBadges" class="pointer-events-none absolute inset-0"></div>
+      </div>
+    
+      <div id="ai2Panel" class="mt-4 bg-gray-50 rounded-xl border p-3 text-sm shadow-sm">
+        <div class="text-gray-400 text-xs">Next TID Prediction이 여기에 표시됩니다.</div>
       </div>
     </aside>
 
