@@ -45,31 +45,30 @@
             <div class="flex items-center gap-2">
               <span class="text-sm text-gray-500">위험도</span>
               <div id="riskBadge" class="px-3 py-1 rounded-full text-white text-lg font-semibold shadow-card" data-risk="middle" style="background-color:#FF6F3C">
-                <span id="riskScore">1000</span> / <span id="riskLevel">middle</span>
+                <span id="riskScore">0</span> / <span id="riskLevel">Benign</span>
               </div>
             </div>
             <div class="flex items-baseline gap-2">
               <span class="text-sm text-gray-500">이벤트</span>
-              <span id="eventCount" class="text-lg font-semibold">1000건</span>
+              <span id="eventCount" class="text-lg font-semibold">0건</span>
             </div>
           </div>
           <div class="ml-auto relative">
             <button id="helpIcon" class="w-5 h-5 rounded-full border border-gray-300 text-gray-600 hover:bg-gray-100 text-sm flex items-center justify-center select-none">?</button>
             <div id="helpTooltip" class="pointer-events-none fixed invisible opacity-0 transition-opacity duration-150 bg-gray-900 text-white text-xs px-3 py-2 rounded-lg shadow-card max-w-xs">
-              <span class="text-xs text-gray-500">Risk</span>
-              <div class="flex items-center gap-2 text-xs">
+              <span class="font-semibold text-xs text-gray-400">Risk</span>
+              <div class="flex items-center gap-2 text-xs mb-2">
                 <span class="inline-flex items-center gap-1"><i class="legend-box" style="background:#B22222"></i>High</span>
                 <span class="inline-flex items-center gap-1"><i class="legend-box" style="background:#FF6F3C"></i>Middle</span>
                 <span class="inline-flex items-center gap-1"><i class="legend-box" style="background:#FFC107"></i>Low</span>
                 <span class="inline-flex items-center gap-1"><i class="legend-box" style="background:#E3E7F1"></i>None</span>
               </div>
-              <span class="text-xs text-gray-500">R_score</span>
+              <span class="font-semibold text-xs text-gray-400">R_score</span>
               <div class="text-xs">
-                <p class="text-gray-500">= 이벤트별 위험 점수(High=300, Medium=200, Low=100) X 발생 횟수(count)</p>
-                <p>1000이상 : High(빨강)</p>
-                <p>500~999 : Medium(주황)</p>
-                <p>100~499 :Low(노랑)</p>
-                <p>0~99:Benign(초록)</p>
+                <p class="font-semibold text-gray-400">= Impact × Likelihood × DetectionDifficulty</p>
+                <p>• Low(1–30) : 피해가 제한적이거나 탐지가 쉬움</p>
+                <p>• Middle(31-70) : 중간 수준 위험, 탐지 가능하지만 영향 있음</p>
+                <p>• High(71–125) : 광범위 피해 또는 탐지 어려움</p>
               </div>
             </div>
           </div>
