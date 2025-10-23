@@ -259,7 +259,6 @@ async function refreshFlow() {
     btn.dataset.sid = s.id;
 
     btn.addEventListener("click", async () => {
-      // 모든 버튼 초기화
       qsa("#flowControls button").forEach(b => {
         b.classList.remove(
           "bg-gray-200", "text-gray-800",
@@ -268,18 +267,15 @@ async function refreshFlow() {
         b.classList.add("bg-white", "hover:bg-gray-50", "text-gray-700");
       });
 
-      // 현재 버튼 활성화
       btn.classList.remove("bg-white", "hover:bg-gray-50", "text-gray-700");
       btn.classList.add("bg-gray-200", "text-gray-800");
 
-      // 세션 열기
       await openSession(s.id);
     });
 
     flowControls.appendChild(btn);
   });
 
-  // 단일 공격 버튼
   const singlesRes = await fetch(`/api/single_events${rangeQS ? ("?" + rangeQS) : ""}`);
   if (singlesRes.ok) {
     const singles = await singlesRes.json();
@@ -296,17 +292,24 @@ async function refreshFlow() {
         );
         b.classList.add("bg-white", "hover:bg-gray-50", "text-gray-700");
       });
-
+    
       btn.classList.remove("bg-white", "hover:bg-gray-50", "text-gray-700");
       btn.classList.add("bg-indigo-100", "text-indigo-800");
-
+    
+      const prevSummary = document.getElementById("timelineSessionSummary");
+      if (prevSummary) prevSummary.remove();
+      const timeline = qs("#timeline");
+      timeline.innerHTML = `<li class="text-gray-500">단일 공격 이벤트에는 세션 흐름 확률이 표시되지 않습니다.</li>`;
+    
+      const ai2Panel = document.querySelector("#ai2Panel");
+      if (ai2Panel) ai2Panel.classList.add("hidden");
+    
       renderSingleEventsTable(singles.events || []);
     });
 
     flowControls.appendChild(btn);
   }
 
-  // 첫 세션 자동 선택
   if (sessions && sessions.length > 0) {
     const firstSid = sessions[0].id;
     const firstBtn = flowControls.querySelector(`button[data-sid="${firstSid}"]`);
@@ -353,10 +356,8 @@ async function openSession(sid) {
       return;
     }
 
-    // --- 전역 세션 갱신 ---
     FLOW_STATE.currentSession = session;
 
-    // --- 이벤트 유효성 검사 ---
     const evs = Array.isArray(session.events) ? session.events : [];
     if (evs.length === 0) {
       qs("#timeline").innerHTML = `<li class="text-gray-500">이벤트가 없습니다.</li>`;
@@ -364,14 +365,12 @@ async function openSession(sid) {
       return;
     }
 
-    // --- 그래프 렌더 ---
     renderGraph(session);
 
-    // --- 타임라인 & 이벤트 테이블 렌더 ---
     renderTimeline(evs, session.session_confidence || null);
     populateEventsTable(evs, FLOW_STATE.page, FLOW_STATE.pageSize);
 
-    // --- 페이지 정보 업데이트 ---
+
     const totalPages = Math.ceil(evs.length / FLOW_STATE.pageSize);
     qs("#pageInfo").textContent = `${FLOW_STATE.page} / ${totalPages}`;
 

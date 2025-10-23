@@ -182,7 +182,6 @@ def parse_dt_safe(ts):
     try:
         dt = dateparser.parse(ts)
         if dt.tzinfo is None:
-            # attach KST if a timezone-naive datetime
             return dt.replace(tzinfo=KST)
         return dt
     except Exception:
@@ -206,98 +205,108 @@ def next_session_key(existing_sessions):
 def is_ddos_event(ev):
     tech = (ev.get("technique") or "").lower()
     tid = (ev.get("tid") or "").lower()
-    if any(x in tech for x in ["ddos", "denial", "denial of service", "dos", "network denial"]):
+    try:
+        fwd_pkts = int(ev.get("fwd_pkts") or 0)
+        fwd_bytes = int(ev.get("fwd_bytes") or 0)
+    except Exception:
+        fwd_pkts = fwd_bytes = 0
+
+    # 명시적 TID 또는 키워드
+    if "t1498" in tid or "ddos" in tech or "denial" in tech:
         return True
-    if any(x in tid for x in ["ddos", "denial", "t1498"]):
-        return True
-    if int(ev.get("fwd_pkts", 0)) >= 200:
+    # 대량 트래픽 기준
+    if fwd_pkts >= 300 and fwd_bytes >= 300 * 40:
         return True
     return False
 
+
 def event_similarity_score(ev, session_events):
+    """세션 유사도 점수 계산 (IP/TID/time 중심으로 강화)"""
     last_ev = session_events[-1]
     score = 0
     try:
-        if ev.get("src_ip") and last_ev.get("src_ip") and ev["src_ip"] == last_ev["src_ip"]:
+        # 동일 src/dst
+        if ev.get("src_ip") == last_ev.get("src_ip"):
+            score += 50
+        if ev.get("dst_ip") == last_ev.get("dst_ip"):
             score += 40
-        if ev.get("dst_ip") and last_ev.get("dst_ip") and ev["dst_ip"] == last_ev["dst_ip"]:
-            score += 30
 
+        # 시간 근접성
         ev_dt = parse_dt_safe(ev.get("timestamp"))
         last_dt = parse_dt_safe(last_ev.get("timestamp"))
         if ev_dt and last_dt:
             diff = abs((ev_dt - last_dt).total_seconds())
-            if diff <= 600:
+            if diff <= 120:
                 score += 30
-            elif diff <= 3600:
+            elif diff <= 600:
                 score += 15
+            elif diff <= 3600:
+                score += 5
 
-        if ev.get("tid") and last_ev.get("tid") and ev["tid"] == last_ev["tid"]:
-            score += 20
-        tech_e = (ev.get("technique") or "").lower()
-        tech_l = (last_ev.get("technique") or "").lower()
+        # TID/Technique 동일
+        if ev.get("tid") == last_ev.get("tid"):
+            score += 40
+        if (ev.get("technique") or "").lower() == (last_ev.get("technique") or "").lower():
+            score += 30
 
-        if tech_e and tech_l and tech_e == tech_l:
-            score += 10
+        # DDoS 간 추가 가중치
         if is_ddos_event(ev) and is_ddos_event(last_ev):
-            score += 50
+            if ev.get("dst_ip") == last_ev.get("dst_ip"):
+                score += 70
     except Exception:
         pass
     return score
 
 def assign_events_to_sessions_by_heuristic(existing_sessions, new_events):
+    """세션 묶음 개선: 유사도 100 이상만 결합, DDoS는 같은 dst_ip만"""
     sessions = dict(existing_sessions)
-    session_keys = list(sessions.keys())
-    used_ids = set()
-    for s in sessions.values():
-        for e in s.get("events", []):
-            if isinstance(e, dict) and e.get("id"):
-                used_ids.add(e.get("id"))
+    used_ids = {e.get("id") for s in sessions.values() for e in s.get("events", []) if isinstance(e, dict)}
 
     sorted_new = sorted(new_events, key=lambda e: parse_dt_safe(e.get("timestamp")) or datetime.min.replace(tzinfo=KST))
     for ev in sorted_new:
         if not isinstance(ev, dict):
             continue
         ev_id = ev.get("id")
-        if ev_id and ev_id in used_ids:
+        if ev_id in used_ids:
             continue
-        
+
         if not sessions:
             key = "session-1"
             sessions[key] = {"timestamp": ev.get("timestamp"), "events": [ev]}
             used_ids.add(ev_id)
             continue
 
-        best_key = None
-        best_score = 0
+        best_key, best_score = None, 0
         for k, sdata in sessions.items():
             s_events = sdata.get("events", [])
             if not s_events:
                 continue
             score = event_similarity_score(ev, s_events)
             if score > best_score:
-                best_score = score
-                best_key = k
+                best_score, best_key = score, k
 
-        if best_score >= 80:
+        # 동일 세션 결합 기준 강화
+        if best_score >= 100:
             sessions[best_key]["events"].append(ev)
             used_ids.add(ev_id)
             continue
 
+        # DDoS 특수 처리
         if is_ddos_event(ev):
             ddos_candidate = None
             for k, sdata in sessions.items():
                 evs = sdata.get("events", [])
-                # if majority are ddos
                 ddos_count = sum(1 for e in evs if is_ddos_event(e))
                 if evs and ddos_count >= max(1, int(len(evs) * 0.6)):
-                    ddos_candidate = k
-                    break
+                    if any(e.get("dst_ip") == ev.get("dst_ip") for e in evs):
+                        ddos_candidate = k
+                        break
             if ddos_candidate:
                 sessions[ddos_candidate]["events"].append(ev)
                 used_ids.add(ev_id)
                 continue
 
+        # 새로운 세션 생성
         new_key = next_session_key(sessions)
         sessions[new_key] = {"timestamp": ev.get("timestamp"), "events": [ev]}
         used_ids.add(ev_id)
@@ -312,7 +321,7 @@ def call_ai2_grouping_if_available(new_events):
 
 def save_events_and_sessions_append(new_events):
     events_path = os.path.join(EVENT_DIR, "events.json")
-    sessions_path = SESSIONS_FILE  # assumed defined in module
+    sessions_path = SESSIONS_FILE
 
     with WRITE_LOCK:
         # 1) load previous events (list)
@@ -509,7 +518,6 @@ def predict():
         if payload is None:
             return jsonify({"error": "invalid json"}), 400
 
-        # --- 입력 샘플 추출 ---
         if "sample" in payload:
             samples = [payload["sample"]]
         elif "samples" in payload:
@@ -517,10 +525,8 @@ def predict():
         else:
             return jsonify({"error": "JSON must contain 'sample' or 'samples'"}), 400
 
-        # --- DataFrame 생성 ---
         df = pd.DataFrame(samples).reset_index(drop=True)
 
-        # --- datetime 통일 처리 ---
         if "datetime" in df.columns:
             df["datetime"] = pd.to_datetime(df["datetime"], errors="coerce")
         elif "timestamp" in df.columns:
@@ -529,16 +535,13 @@ def predict():
         else:
             df["datetime"] = pd.NaT
 
-        # --- protocol 문자열 정규화 (Unknown 대체) ---
         if "protocol" in df.columns:
             df["protocol"] = df["protocol"].fillna("unknown").astype(str)
             df["protocol_cat"] = df["protocol"].astype("category").cat.codes
             df.drop(columns=["protocol"], inplace=True, errors="ignore")
 
-        # --- 전처리 ---
         X_df = preprocess_dataframe(df.copy())
 
-        # ===== 내부 헬퍼: 모델 feature 정렬 =====
         def get_model_feature_names(model):
             try:
                 booster = getattr(model, "get_booster", lambda: None)()
@@ -566,15 +569,13 @@ def predict():
             app.logger.info(f"{name} 모델 feature 정렬 완료 ({len(feats)}개 피처).")
             return X_df
 
-        # --- Stage1 feature 정렬 및 NaN 보정 ---
         X_df = align_X_to_model(X_df, stage1_model, "Stage1")
         X_df = X_df.select_dtypes(include=[np.number]).fillna(0)
 
-        # --- 모델 로드 확인 ---
         if stage1_model is None or stage2_model is None:
             return jsonify({"error": "model not loaded"}), 500
 
-        # --- Stage 1: 공격 여부 ---
+        # Stage 1: 공격 여부
         if hasattr(stage1_model, "predict_proba"):
             y_stage1_proba = stage1_model.predict_proba(X_df)[:, 1]
             y_stage1 = (y_stage1_proba >= 0.5).astype(int)
@@ -582,7 +583,7 @@ def predict():
             y_stage1 = stage1_model.predict(X_df)
             y_stage1_proba = np.clip(y_stage1, 0, 1)
 
-        # --- Stage 2: TTP 분류 ---
+        # Stage 2: TTP 분류
         X_stage2 = X_df.copy()
         X_stage2["stage1_pred"] = y_stage1
         X_stage2 = align_X_to_model(X_stage2, stage2_model, "Stage2")
@@ -603,7 +604,7 @@ def predict():
 
         amap_all = attack_map or {}
 
-        # --- 결과 매핑 ---
+        # 결과 매핑
         new_events = []
         for i, row in df.iterrows():
             label = decoded_labels[i]
@@ -611,6 +612,15 @@ def predict():
             tid = amap.get("tid")
             tech = amap.get("technique")
 
+            # 입력값 우선
+            incoming_tid = row.get("tid") or row.get("TID") or None
+            incoming_tech = row.get("technique") or row.get("tech") or None
+            if incoming_tid:
+                tid = str(incoming_tid).upper()
+            if incoming_tech:
+                tech = str(incoming_tech)
+
+            # TTP_MAP 기반 보완
             if not tech:
                 if isinstance(label, str) and label.upper().startswith("T"):
                     if label.upper() in TTP_MAP:
@@ -621,18 +631,18 @@ def predict():
                         if base in TTP_MAP:
                             tid = label.upper()
                             tech = TTP_MAP[base]
-                if not tech and tid:
-                    key = str(tid).upper()
-                    tech = TTP_MAP.get(key) or (
-                        TTP_MAP.get(key.split(".")[0]) if "." in key else None
-                    )
+            if not tech and tid:
+                key = str(tid).upper()
+                tech = TTP_MAP.get(key) or (TTP_MAP.get(key.split(".")[0]) if "." in key else None)
 
+            # 그래도 없으면 UNKNOWN
             tid = (tid or label or "T0000").upper()
             if "." in tid and tid not in TTP_MAP:
                 base = tid.split(".")[0]
                 if base in TTP_MAP:
                     tech = tech or TTP_MAP[base]
-            tech = tech or label or "-"
+            tech = tech or label or "UNKNOWN"
+
 
             out = {
                 "timestamp": to_kst_iso(row.get("datetime")),
@@ -654,7 +664,6 @@ def predict():
             }
             new_events.append(out)
 
-        # --- 저장 및 응답 ---
         save_events_and_sessions_append(new_events)
         return jsonify({"results": new_events, "saved": True}), 200
 
