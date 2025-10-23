@@ -8,6 +8,7 @@ import pandas as pd
 import numpy as np
 import joblib
 import tensorflow as tf
+import pytz
 
 BASE_DIR = os.path.dirname(__file__)
 DATA_DIR = os.path.join(BASE_DIR, "data")
@@ -34,8 +35,16 @@ WRITE_LOCK = Lock()
 
 def safe_load(path):
     try:
-        return joblib.load(path) if os.path.exists(path) else None
-    except:
+        if not os.path.exists(path):
+            print(f"[safe_load] 파일 없음: {path}")
+            return None
+        print(f"[safe_load] 로드 시도: {path}")
+        obj = joblib.load(path)
+        print(f"[safe_load] 로드 성공: {path}")
+        return obj
+    except Exception as e:
+        print(f"[safe_load] 로드 실패: {path} → {e}")
+        import traceback; traceback.print_exc()
         return None
 
 def to_kst_iso(dt_like):
@@ -154,30 +163,224 @@ def load_sessions():
     except:
         return {}
 
+def load_json_safe(path, default):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return default
+
+def save_json_safe(path, obj):
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(obj, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, path)
+
+def parse_dt_safe(ts):
+    if not ts:
+        return None
+    try:
+        dt = dateparser.parse(ts)
+        if dt.tzinfo is None:
+            # attach KST if a timezone-naive datetime
+            return dt.replace(tzinfo=KST)
+        return dt
+    except Exception:
+        try:
+            return datetime.fromisoformat(ts)
+        except Exception:
+            return None
+
+def next_session_key(existing_sessions):
+    nums = []
+    for k in existing_sessions.keys():
+        if isinstance(k, str) and k.startswith("session-"):
+            try:
+                n = int(k.split("-", 1)[1])
+                nums.append(n)
+            except Exception:
+                pass
+    next_n = max(nums) + 1 if nums else 1
+    return f"session-{next_n}"
+
+def is_ddos_event(ev):
+    tech = (ev.get("technique") or "").lower()
+    tid = (ev.get("tid") or "").lower()
+    if any(x in tech for x in ["ddos", "denial", "denial of service", "dos", "network denial"]):
+        return True
+    if any(x in tid for x in ["ddos", "denial", "t1498"]):
+        return True
+    if int(ev.get("fwd_pkts", 0)) >= 200:
+        return True
+    return False
+
+def event_similarity_score(ev, session_events):
+    last_ev = session_events[-1]
+    score = 0
+    try:
+        if ev.get("src_ip") and last_ev.get("src_ip") and ev["src_ip"] == last_ev["src_ip"]:
+            score += 40
+        if ev.get("dst_ip") and last_ev.get("dst_ip") and ev["dst_ip"] == last_ev["dst_ip"]:
+            score += 30
+
+        ev_dt = parse_dt_safe(ev.get("timestamp"))
+        last_dt = parse_dt_safe(last_ev.get("timestamp"))
+        if ev_dt and last_dt:
+            diff = abs((ev_dt - last_dt).total_seconds())
+            if diff <= 600:
+                score += 30
+            elif diff <= 3600:
+                score += 15
+
+        if ev.get("tid") and last_ev.get("tid") and ev["tid"] == last_ev["tid"]:
+            score += 20
+        tech_e = (ev.get("technique") or "").lower()
+        tech_l = (last_ev.get("technique") or "").lower()
+
+        if tech_e and tech_l and tech_e == tech_l:
+            score += 10
+        if is_ddos_event(ev) and is_ddos_event(last_ev):
+            score += 50
+    except Exception:
+        pass
+    return score
+
+def assign_events_to_sessions_by_heuristic(existing_sessions, new_events):
+    sessions = dict(existing_sessions)
+    session_keys = list(sessions.keys())
+    used_ids = set()
+    for s in sessions.values():
+        for e in s.get("events", []):
+            if isinstance(e, dict) and e.get("id"):
+                used_ids.add(e.get("id"))
+
+    sorted_new = sorted(new_events, key=lambda e: parse_dt_safe(e.get("timestamp")) or datetime.min.replace(tzinfo=KST))
+    for ev in sorted_new:
+        if not isinstance(ev, dict):
+            continue
+        ev_id = ev.get("id")
+        if ev_id and ev_id in used_ids:
+            continue
+        
+        if not sessions:
+            key = "session-1"
+            sessions[key] = {"timestamp": ev.get("timestamp"), "events": [ev]}
+            used_ids.add(ev_id)
+            continue
+
+        best_key = None
+        best_score = 0
+        for k, sdata in sessions.items():
+            s_events = sdata.get("events", [])
+            if not s_events:
+                continue
+            score = event_similarity_score(ev, s_events)
+            if score > best_score:
+                best_score = score
+                best_key = k
+
+        if best_score >= 80:
+            sessions[best_key]["events"].append(ev)
+            used_ids.add(ev_id)
+            continue
+
+        if is_ddos_event(ev):
+            ddos_candidate = None
+            for k, sdata in sessions.items():
+                evs = sdata.get("events", [])
+                # if majority are ddos
+                ddos_count = sum(1 for e in evs if is_ddos_event(e))
+                if evs and ddos_count >= max(1, int(len(evs) * 0.6)):
+                    ddos_candidate = k
+                    break
+            if ddos_candidate:
+                sessions[ddos_candidate]["events"].append(ev)
+                used_ids.add(ev_id)
+                continue
+
+        new_key = next_session_key(sessions)
+        sessions[new_key] = {"timestamp": ev.get("timestamp"), "events": [ev]}
+        used_ids.add(ev_id)
+
+    return sessions
+
+def call_ai2_grouping_if_available(new_events):
+    try:
+        return None
+    except Exception:
+        return None
+
 def save_events_and_sessions_append(new_events):
     events_path = os.path.join(EVENT_DIR, "events.json")
+    sessions_path = SESSIONS_FILE  # assumed defined in module
+
     with WRITE_LOCK:
-        prev = []
-        if os.path.exists(events_path):
-            try:
-                with open(events_path, "r", encoding="utf-8") as f:
-                    prev = json.load(f)
-                    if not isinstance(prev, list):
-                        prev = []
-            except:
-                prev = []
-        merged = prev + new_events
+        # 1) load previous events (list)
+        prev = load_json_safe(events_path, [])
+        if not isinstance(prev, list):
+            prev = []
+
+        # 2) merge and dedupe by 'id' if present, else by full object equality
+        merged_map = {}
+        for e in prev + new_events:
+            if not isinstance(e, dict):
+                continue
+            eid = e.get("id")
+            if eid:
+                merged_map[eid] = e
+            else:
+                key = f"{e.get('timestamp')}_{e.get('src_ip')}_{e.get('dst_ip')}_{e.get('src_port')}_{e.get('dst_port')}"
+                merged_map.setdefault(key, e)
+
+        # 3) produce sorted list
+        merged_list = list(merged_map.values())
         try:
             merged_sorted = sorted(
-                merged,
-                key=lambda e: dateparser.parse(e.get("timestamp")) if e.get("timestamp") else datetime.min.replace(tzinfo=KST),
+                merged_list,
+                key=lambda e: parse_dt_safe(e.get("timestamp")) or datetime.min.replace(tzinfo=KST),
             )
-        except:
-            merged_sorted = merged
-        with open(events_path, "w", encoding="utf-8") as f:
-            json.dump(merged_sorted, f, ensure_ascii=False, indent=2)
-        with open(SESSIONS_FILE, "w", encoding="utf-8") as f:
-            json.dump({"flow-1": {"events": merged_sorted}}, f, ensure_ascii=False, indent=2)
+        except Exception:
+            merged_sorted = merged_list
+
+        # 4) write events.json
+        save_json_safe(events_path, merged_sorted)
+
+        # 5) load existing sessions.json
+        existing_sessions = load_json_safe(sessions_path, {})
+        if not isinstance(existing_sessions, dict):
+            existing_sessions = {}
+
+        # 6) try ai2 grouping first (optional)
+        ai2_result = call_ai2_grouping_if_available(new_events)
+        if ai2_result:
+            for sess in ai2_result:
+                key = next_session_key(existing_sessions)
+                sess_events = []
+                for e in sess.get("events", []):
+                    if isinstance(e, dict):
+                        sess_events.append(e)
+                    else:
+                        match = next((m for m in merged_sorted if m.get("id") == e), None)
+                        if match:
+                            sess_events.append(match)
+                existing_sessions[key] = {"timestamp": sess.get("timestamp") or (sess_events[0].get("timestamp") if sess_events else None), "events": sess_events}
+        else:
+            # 7) fallback: assign events to sessions by heuristic
+            prev_ids = set()
+            for e in prev:
+                if isinstance(e, dict) and e.get("id"):
+                    prev_ids.add(e.get("id"))
+            newly_added = [e for e in merged_sorted if isinstance(e, dict) and e.get("id") not in prev_ids]
+            if not newly_added:
+                prev_signatures = set(f"{e.get('timestamp')}_{e.get('src_ip')}_{e.get('dst_ip')}" for e in prev if isinstance(e, dict))
+                newly_added = [e for e in merged_sorted if f"{e.get('timestamp')}_{e.get('src_ip')}_{e.get('dst_ip')}" not in prev_signatures]
+
+            updated_sessions = assign_events_to_sessions_by_heuristic(existing_sessions, newly_added)
+            existing_sessions = updated_sessions
+
+        # 8) save sessions.json
+        save_json_safe(sessions_path, existing_sessions)
+
     return merged_sorted
 
 # =========================================================
@@ -301,100 +504,165 @@ load_ai2_model()
 # =========================================================
 @app.route("/predict", methods=["POST"])
 def predict():
-    payload = request.get_json(force=True)
-    if payload is None:
-        return jsonify({"error": "invalid json"}), 400
+    try:
+        payload = request.get_json(force=True)
+        if payload is None:
+            return jsonify({"error": "invalid json"}), 400
 
-    if "sample" in payload:
-        samples = [payload["sample"]]
-    elif "samples" in payload:
-        samples = payload["samples"]
-    else:
-        return jsonify({"error": "JSON must contain 'sample' or 'samples'"}), 400
+        # --- 입력 샘플 추출 ---
+        if "sample" in payload:
+            samples = [payload["sample"]]
+        elif "samples" in payload:
+            samples = payload["samples"]
+        else:
+            return jsonify({"error": "JSON must contain 'sample' or 'samples'"}), 400
 
-    df = pd.DataFrame(samples)
-    X_df = preprocess_dataframe(df)
+        # --- DataFrame 생성 ---
+        df = pd.DataFrame(samples).reset_index(drop=True)
 
-    if stage1_model is None or stage2_model is None:
-        return jsonify({"error": "model not loaded"}), 500
+        # --- datetime 통일 처리 ---
+        if "datetime" in df.columns:
+            df["datetime"] = pd.to_datetime(df["datetime"], errors="coerce")
+        elif "timestamp" in df.columns:
+            df["datetime"] = pd.to_datetime(df["timestamp"], errors="coerce")
+            df.drop(columns=["timestamp"], inplace=True, errors="ignore")
+        else:
+            df["datetime"] = pd.NaT
 
-    # Stage 1 (공격 여부 + 확률)
-    if hasattr(stage1_model, "predict_proba"):
-        y_stage1_proba = stage1_model.predict_proba(X_df)[:, 1]
-        y_stage1 = (y_stage1_proba >= 0.5).astype(int)
-    else:
-        y_stage1 = stage1_model.predict(X_df)
-        y_stage1_proba = np.clip(y_stage1, 0, 1)
+        # --- protocol 문자열 정규화 (Unknown 대체) ---
+        if "protocol" in df.columns:
+            df["protocol"] = df["protocol"].fillna("unknown").astype(str)
+            df["protocol_cat"] = df["protocol"].astype("category").cat.codes
+            df.drop(columns=["protocol"], inplace=True, errors="ignore")
 
-    # Stage 2 (TTP 분류 + 확률)
-    X_stage2 = X_df.copy()
-    X_stage2["stage1_pred"] = y_stage1
-    if hasattr(stage2_model, "predict_proba"):
-        y_stage2_proba_all = stage2_model.predict_proba(X_stage2)
-        y_stage2 = np.argmax(y_stage2_proba_all, axis=1)
-        y_stage2_conf = np.max(y_stage2_proba_all, axis=1)
-    else:
-        y_stage2 = stage2_model.predict(X_stage2)
-        y_stage2_conf = np.ones(len(y_stage2)) * 0.5
+        # --- 전처리 ---
+        X_df = preprocess_dataframe(df.copy())
 
-    decoded_labels = (
-        label_encoder.inverse_transform(y_stage2)
-        if label_encoder else [str(y) for y in y_stage2]
-    )
-    amap_all = attack_map or {}
+        # ===== 내부 헬퍼: 모델 feature 정렬 =====
+        def get_model_feature_names(model):
+            try:
+                booster = getattr(model, "get_booster", lambda: None)()
+                if booster is not None and getattr(booster, "feature_names", None):
+                    return list(booster.feature_names)
+            except Exception:
+                pass
+            fn = getattr(model, "feature_names_in_", None)
+            if fn is not None:
+                return list(fn)
+            return None
 
-    new_events = []
-    for i, row in df.iterrows():
-        label = decoded_labels[i]
-        amap = amap_all.get(label, {})  # {'tid': 'Txxxx', 'technique': '...'} 기대
-        tid = amap.get("tid")
-        tech = amap.get("technique")
+        def align_X_to_model(X_df, model, name="stage"):
+            feats = get_model_feature_names(model)
+            if not feats:
+                app.logger.info(f"{name} 모델 feature 정보 없음, 정렬 생략.")
+                return X_df
+            missing = [c for c in feats if c not in X_df.columns]
+            for m in missing:
+                X_df[m] = 0
+            extra = [c for c in X_df.columns if c not in feats]
+            if extra:
+                app.logger.debug(f"{name} 모델에서 사용하지 않는 컬럼 제거: {extra}")
+            X_df = X_df[[c for c in feats if c in X_df.columns]]
+            app.logger.info(f"{name} 모델 feature 정렬 완료 ({len(feats)}개 피처).")
+            return X_df
 
-        if not tech:
-            if isinstance(label, str) and label.upper().startswith("T"):
-                if label.upper() in TTP_MAP:
-                    tid = label.upper()
-                    tech = TTP_MAP[tid]
-                elif "." in label:
-                    base = label.split(".")[0].upper()
-                    if base in TTP_MAP:
+        # --- Stage1 feature 정렬 및 NaN 보정 ---
+        X_df = align_X_to_model(X_df, stage1_model, "Stage1")
+        X_df = X_df.select_dtypes(include=[np.number]).fillna(0)
+
+        # --- 모델 로드 확인 ---
+        if stage1_model is None or stage2_model is None:
+            return jsonify({"error": "model not loaded"}), 500
+
+        # --- Stage 1: 공격 여부 ---
+        if hasattr(stage1_model, "predict_proba"):
+            y_stage1_proba = stage1_model.predict_proba(X_df)[:, 1]
+            y_stage1 = (y_stage1_proba >= 0.5).astype(int)
+        else:
+            y_stage1 = stage1_model.predict(X_df)
+            y_stage1_proba = np.clip(y_stage1, 0, 1)
+
+        # --- Stage 2: TTP 분류 ---
+        X_stage2 = X_df.copy()
+        X_stage2["stage1_pred"] = y_stage1
+        X_stage2 = align_X_to_model(X_stage2, stage2_model, "Stage2")
+
+        if hasattr(stage2_model, "predict_proba"):
+            y_stage2_proba_all = stage2_model.predict_proba(X_stage2)
+            y_stage2 = np.argmax(y_stage2_proba_all, axis=1)
+            y_stage2_conf = np.max(y_stage2_proba_all, axis=1)
+        else:
+            y_stage2 = stage2_model.predict(X_stage2)
+            y_stage2_conf = np.ones(len(y_stage2)) * 0.5
+
+        decoded_labels = (
+            label_encoder.inverse_transform(y_stage2)
+            if label_encoder
+            else [str(y) for y in y_stage2]
+        )
+
+        amap_all = attack_map or {}
+
+        # --- 결과 매핑 ---
+        new_events = []
+        for i, row in df.iterrows():
+            label = decoded_labels[i]
+            amap = amap_all.get(label, {})
+            tid = amap.get("tid")
+            tech = amap.get("technique")
+
+            if not tech:
+                if isinstance(label, str) and label.upper().startswith("T"):
+                    if label.upper() in TTP_MAP:
                         tid = label.upper()
-                        tech = TTP_MAP[base]
-            if not tech and tid:
-                key = str(tid).upper()
-                tech = TTP_MAP.get(key) or (TTP_MAP.get(key.split(".")[0]) if "." in key else None)
+                        tech = TTP_MAP[tid]
+                    elif "." in label:
+                        base = label.split(".")[0].upper()
+                        if base in TTP_MAP:
+                            tid = label.upper()
+                            tech = TTP_MAP[base]
+                if not tech and tid:
+                    key = str(tid).upper()
+                    tech = TTP_MAP.get(key) or (
+                        TTP_MAP.get(key.split(".")[0]) if "." in key else None
+                    )
 
-        tid = (tid or label or "T0000")
-        tid = str(tid).upper()
-        if "." in tid and tid not in TTP_MAP:
-            base = tid.split(".")[0]
-            if base in TTP_MAP:
-                tid = tid
-                tech = tech or TTP_MAP[base]
-        tech = tech or label or "-"
+            tid = (tid or label or "T0000").upper()
+            if "." in tid and tid not in TTP_MAP:
+                base = tid.split(".")[0]
+                if base in TTP_MAP:
+                    tech = tech or TTP_MAP[base]
+            tech = tech or label or "-"
 
-        out = {
-            "timestamp": to_kst_iso(row.get("datetime")),
-            "src_ip": row.get("src_ip"),
-            "src_port": row.get("src_port"),
-            "dst_ip": row.get("dst_ip"),
-            "dst_port": row.get("dst_port"),
-            "protocol": normalize_protocol(row.get("protocol")),
-            "duration": row.get("duration"),
-            "fwd_pkts": row.get("fwd_pkts"),
-            "bwd_pkts": row.get("bwd_pkts"),
-            "fwd_bytes": row.get("fwd_bytes"),
-            "bwd_bytes": row.get("bwd_bytes"),
-            "tid": tid,
-            "technique": tech,
-            "attack_label": label,
-            "stage1_conf": float(np.nan_to_num(y_stage1_proba[i], nan=0.0)),
-            "stage2_conf": float(np.nan_to_num(y_stage2_conf[i], nan=0.0)),
-        }
-        new_events.append(out)
+            out = {
+                "timestamp": to_kst_iso(row.get("datetime")),
+                "src_ip": row.get("src_ip"),
+                "src_port": row.get("src_port"),
+                "dst_ip": row.get("dst_ip"),
+                "dst_port": row.get("dst_port"),
+                "protocol": "unknown",
+                "duration": row.get("duration"),
+                "fwd_pkts": row.get("fwd_pkts"),
+                "bwd_pkts": row.get("bwd_pkts"),
+                "fwd_bytes": row.get("fwd_bytes"),
+                "bwd_bytes": row.get("bwd_bytes"),
+                "tid": tid,
+                "technique": tech,
+                "attack_label": label,
+                "stage1_conf": float(np.nan_to_num(y_stage1_proba[i], nan=0.0)),
+                "stage2_conf": float(np.nan_to_num(y_stage2_conf[i], nan=0.0)),
+            }
+            new_events.append(out)
 
-    save_events_and_sessions_append(new_events)
-    return jsonify({"results": new_events, "saved": True}), 200
+        # --- 저장 및 응답 ---
+        save_events_and_sessions_append(new_events)
+        return jsonify({"results": new_events, "saved": True}), 200
+
+    except Exception as e:
+        import traceback
+        tb = traceback.format_exc()
+        app.logger.error("Predict exception: %s\n%s", str(e), tb)
+        return jsonify({"error": "internal server error", "message": str(e)}), 500
 
 # =========================================================
 # /health

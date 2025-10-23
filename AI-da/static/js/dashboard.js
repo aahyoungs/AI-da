@@ -249,6 +249,7 @@ async function refreshFlow() {
     flowControls.innerHTML = `<div class="text-xs text-red-600">세션을 불러올 수 없습니다.</div>`;
     return;
   }
+
   const sessions = await res.json();
 
   sessions.forEach(s => {
@@ -258,6 +259,7 @@ async function refreshFlow() {
     btn.dataset.sid = s.id;
 
     btn.addEventListener("click", async () => {
+      // 모든 버튼 초기화
       qsa("#flowControls button").forEach(b => {
         b.classList.remove(
           "bg-gray-200", "text-gray-800",
@@ -266,15 +268,18 @@ async function refreshFlow() {
         b.classList.add("bg-white", "hover:bg-gray-50", "text-gray-700");
       });
 
+      // 현재 버튼 활성화
       btn.classList.remove("bg-white", "hover:bg-gray-50", "text-gray-700");
       btn.classList.add("bg-gray-200", "text-gray-800");
 
+      // 세션 열기
       await openSession(s.id);
     });
 
     flowControls.appendChild(btn);
   });
 
+  // 단일 공격 버튼
   const singlesRes = await fetch(`/api/single_events${rangeQS ? ("?" + rangeQS) : ""}`);
   if (singlesRes.ok) {
     const singles = await singlesRes.json();
@@ -301,41 +306,119 @@ async function refreshFlow() {
     flowControls.appendChild(btn);
   }
 
-
+  // 첫 세션 자동 선택
   if (sessions && sessions.length > 0) {
-    await openSession(sessions[0].id);
+    const firstSid = sessions[0].id;
+    const firstBtn = flowControls.querySelector(`button[data-sid="${firstSid}"]`);
+    if (firstBtn) {
+      firstBtn.classList.remove("bg-white", "hover:bg-gray-50", "text-gray-700");
+      firstBtn.classList.add("bg-gray-200", "text-gray-800");
+    }
+    await openSession(firstSid);
   } else {
     qs("#flowCanvas").innerHTML = `<div class="text-xs text-gray-500 p-3">표시할 세션이 없습니다.</div>`;
     qs("#timeline").innerHTML = `<li class="text-gray-500">표시할 타임라인이 없습니다.</li>`;
     qs("#eventsTable tbody").innerHTML = "";
     qs("#pageInfo").textContent = "0 / 0";
-
     const ai2Panel = document.querySelector("#ai2Panel");
     if (ai2Panel) ai2Panel.classList.add("hidden");
   }
-
 }
 
 async function openSession(sid) {
   const rangeQS = buildRangeParams();
   const url = `/api/session/${sid}${rangeQS ? ("?" + rangeQS) : ""}`;
-  const res = await fetch(url);
-  if (!res.ok) { console.warn("세션 상세 실패:", res.status); return; }
-  const session = await res.json();
-  if (session.error) { console.warn(session.error); return; }
 
-  FLOW_STATE.currentSession = session;
-  renderGraph(session);
+  try {
+    // --- 기존 UI 초기화 (중요!!) ---
+    qs("#flowCanvas").innerHTML = "";
+    qs("#timeline").innerHTML = `<li class="text-gray-400 text-xs p-2">로딩 중...</li>`;
+    qs("#eventsTable tbody").innerHTML = `<tr><td colspan="11" class="text-center text-gray-400 p-2 text-xs">로딩 중...</td></tr>`;
+    const ai2Panel = document.querySelector("#ai2Panel");
+    if (ai2Panel) ai2Panel.classList.add("hidden");
 
-  populateEventsTable(session.events || []);
-  qs("#pageInfo").textContent = `1 / 1`;
+    const wrap = document.getElementById("timelineWrap");
+    if (wrap) wrap.scrollTo({ top: 0, behavior: "smooth" });
 
-  renderTimeline(session.events || []);
-  loadSessionEvents(sid);
+    // --- 세션 데이터 요청 ---
+    const res = await fetch(url);
+    if (!res.ok) {
+      console.warn("세션 상세 실패:", res.status);
+      return;
+    }
 
-  const ai2Panel = document.querySelector("#ai2Panel");
-  if (ai2Panel) ai2Panel.classList.remove("hidden");
+    const session = await res.json();
+    if (session.error) {
+      console.warn(session.error);
+      return;
+    }
+
+    // --- 전역 세션 갱신 ---
+    FLOW_STATE.currentSession = session;
+
+    // --- 이벤트 유효성 검사 ---
+    const evs = Array.isArray(session.events) ? session.events : [];
+    if (evs.length === 0) {
+      qs("#timeline").innerHTML = `<li class="text-gray-500">이벤트가 없습니다.</li>`;
+      qs("#eventsTable tbody").innerHTML = `<tr><td colspan="11" class="text-center text-gray-500 p-2">이 세션에는 이벤트가 없습니다.</td></tr>`;
+      return;
+    }
+
+    // --- 그래프 렌더 ---
+    renderGraph(session);
+
+    // --- 타임라인 & 이벤트 테이블 렌더 ---
+    renderTimeline(evs, session.session_confidence || null);
+    populateEventsTable(evs, FLOW_STATE.page, FLOW_STATE.pageSize);
+
+    // --- 페이지 정보 업데이트 ---
+    const totalPages = Math.ceil(evs.length / FLOW_STATE.pageSize);
+    qs("#pageInfo").textContent = `${FLOW_STATE.page} / ${totalPages}`;
+
+    // --- AI2 예측 패널 ---
+    if (ai2Panel) {
+      ai2Panel.classList.remove("hidden");
+      ai2Panel.innerHTML = "";
+
+      const seenTids = new Set(evs.map(e => e.tid).filter(Boolean));
+      const ctx = (session.context_tids || []).filter(t => t && t !== "<UNK>");
+      const ctxDisplay = ctx.length ? ctx.join(" → ") : "(none)";
+      const rawPreds = session.next_tid_topk || [];
+      const futurePreds = rawPreds.filter(p => p && p.tid && !seenTids.has(p.tid));
+
+      let html = `<div class="mb-2 text-sm font-semibold text-gray-700">Next TID Prediction</div>`;
+      html += `<div class="text-xs text-gray-500 mb-2">최근 시퀀스: ${ctxDisplay}</div>`;
+
+      if (!futurePreds.length) {
+        html += `<div class="text-xs text-gray-400 italic">예측된 다음 공격이 현재 세션에서 이미 발생했거나 예측 없음</div>`;
+      } else {
+        html += `<div class="space-y-2">`;
+        futurePreds.forEach(p => {
+          const pct = Math.round((p.prob || 0) * 100);
+          const barColor = pct >= 70 ? "bg-red-500" : (pct >= 40 ? "bg-orange-500" : "bg-emerald-500");
+          const tech = p.technique ? p.technique : "-";
+          html += `
+            <div class="flex items-center justify-between text-sm">
+              <div class="flex flex-col">
+                <div class="font-semibold">${p.tid} <span class="text-xs text-gray-500">(${tech})</span></div>
+                <div class="text-xs text-gray-500">${pct}%</div>
+              </div>
+              <div class="w-36 ml-3">
+                <div class="w-full bg-gray-200 rounded-full h-2">
+                  <div class="${barColor} h-2 rounded-full" style="width:${pct}%;"></div>
+                </div>
+              </div>
+            </div>`;
+        });
+        html += `</div>`;
+      }
+      ai2Panel.innerHTML = html;
+    }
+  } catch (e) {
+    console.error("openSession error:", e);
+  }
 }
+
 
 function populateEventsTable(events, page = 1, per_page = 10) {
   const tbody = qs("#eventsTable tbody");
